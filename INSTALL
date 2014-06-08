@@ -1,0 +1,96 @@
+To use this driver: 
+- Make sure you have libusb-1.0 installed on your computer,
+  along with its headers,
+- Build it (g++ -o drv -lusb-1.0 -std=c++11 ./drv.cpp)
+- Download an Athena ASEDrive IIIe Serial driver at:
+  http://www.athena-scs.com/support/software-driver-downloads
+- Build a modified copy of this driver, that handles virtual 
+  serial ports. In order to achieve this, I added the following 
+  code to ifdhandler.c:
+
+RESPONSECODE IFDHCreateChannelByName ( DWORD Lun, LPSTR DeviceName )
+{
+  /* find index of latest '/' */
+  
+  int len = strlen(DeviceName);
+  int lastIndex = 0;
+  int j = 0;
+  while(j < len)
+  {
+    if(DeviceName[j] == '/') lastIndex = j;
+
+    j++;
+  }
+  
+  /* parse the number after this one */
+  
+  int num = (int)strtol(DeviceName+lastIndex+1,NULL,10);
+  return IFDHCreateChannel(Lun, (DWORD)num);
+}
+
+and in function IFDHCreateChannel:
+
+.....
+#ifdef ASE_DEBUG
+    syslog(LOG_INFO, "==============================================\n");
+    syslog(LOG_INFO, "Athena Serial : entering IFDHCreateChannel Channel = 0x%04x%04x Lun = 0x%04x%04x\n", (int)((Lun >> 16) & 0xFFFF), (int)(Lun & 0xFFFF), (int)((Channel >> 16) & 0xFFFF), (int)(Channel & 0xFFFF));       
+    syslog(LOG_INFO, "==============================================\n");
+#endif
+
+    //begin of modified code
+    
+    /*
+    if (Lnibble != 0x3F8 && Lnibble != 0x2F8 && Lnibble != 0x3E8 && Lnibble != 0x2E8) {
+#ifdef ASE_DEBUG
+       	syslog(LOG_INFO, "IFDHCreateChannel: Error! Channel not supported. Existing.\n");
+#endif
+        return IFD_NOT_SUPPORTED;
+    }
+    */
+
+    /* open the communication port */
+    
+    /*
+    if (Lnibble == 0x3F8 || Lnibble == 0x2F8 || Lnibble == 0x3E8 || Lnibble == 0x2E8)
+	sprintf(name, "/dev/ttyS%d", (Lnibble == 0x3F8 ? 0 : Lnibble == 0x2F8 ? 1 : Lnibble == 0x3E8 ? 2 : 3));
+    else
+	sprintf(name, "/dev/ttyUSB%d", Lnibble);
+    */
+    
+    /* I will open MY com port (the one I provide for Myson) */
+    sprintf(name, "/dev/pts/%d", Lnibble);
+      syslog(LOG_INFO, "opening %s\n", name);
+
+    //end of modified code
+    
+    if (IO_InitializePort(&readerData[readerNum], 115200, 8, 'N', name) == TRUE) {
+#ifdef ASE_DEBUG
+        syslog(LOG_INFO, "%s opened for IO.\n", name);
+#endif
+        IO_UpdateReturnBlock(&readerData[readerNum], 4);
+    }
+    else {
+#ifdef ASE_DEBUG
+        syslog(LOG_INFO, "IFDHCreateChannel: Error! Could not open %s. Existing.\n", name);
+#endif
+        return IFD_COMMUNICATION_ERROR;
+    }
+.....
+
+- Run the built "drv" file as root
+- Install your modified Athena driver
+- In the Athena's driver directory, there is one called "etc", with a
+  reader.conf file inside. Just add the following:
+
+DEVICENAME       /dev/pts/x 
+
+where x is the number displayed by the "drv" program
+
+- Copy this reader.conf as ASEDrive.conf in /etc/reader.conf.d/
+  (users of older versions of PCSC-Lite should append the content
+  to their existing /etc/reader.conf)
+- Restart pcscd
+
+- Everything should be operational. Each time you restart drv, 
+  you will have to modify your reader.conf to make it match 
+  the virtual terminal drv has got.
