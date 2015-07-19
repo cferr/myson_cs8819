@@ -1,0 +1,74 @@
+#!/bin/sh
+
+cd `dirname $0`
+
+USAGE=0
+PREFIX=/usr
+USBDROPDIR=
+BUILD=
+PCSC_HEADERS=
+PCSC_LIBS=
+
+for p in $*; do
+	v=${p#*=}
+	case "$p" in
+		--help)
+			USAGE=1
+		;;
+		--prefix=*)
+			PREFIX="$v"
+		;;
+		--with-pcsc-drivers-dir=*)
+			USBDROPDIR="$v"
+		;;
+		--with-pcsc-headers=*)
+			PCSC_HEADERS="$v"
+		;;
+		--with-pcsc-libs=*)
+			PCSC_LIBS="$v"
+		;;
+		--build=*)
+			BUILD="$v"
+		;;
+	esac
+done
+
+if [ ${USAGE} != 0 ]; then
+	echo -e "usage $0"
+	echo -e "\t--help\t\t\tThis help."
+	echo -e "\t--build=arch\t\tSet build architacture (gcc prefix), default empty."
+	echo -e "\t--prefix=dir\t\tSet installation prefix, default /usr."
+	echo -e "\t--with-pcsc-drivers-dir=dir\tSet pcsc drivers directory."
+	echo -e "\t--with-pcsc-headers=dir\t\tSet manual pcsc headers directory."
+	echo -e "\t--with-pcsc-libs=dir\t\tSet manual pcsc library dir."
+	exit 1
+fi
+
+if [ -z "$USBDROPDIR" ]; then
+	USBDROPDIR=`pkg-config libpcsclite --variable=usbdropdir`
+fi
+
+if [ -z "$USBDROPDIR" ]; then
+	echo "Cannot find pcsc drivers directory"
+	exit 1
+fi
+
+if [ -z "$PCSC_HEADERS" ]; then
+	CFLAGS="$CFLAGS `pkg-config libpcsclite --cflags`"
+else
+	CFLAGS="$CFLAGS -I${PCSC_HEADERS}"
+fi
+
+if [ -z "$PCSC_LIBS" ]; then
+	LDFLAGS="$LDFLAGS `pkg-config libpcsclite --libs`"
+else
+	LDFLAGS="$LDFLAGS -L${PCSC_LIBS} -lpcsclite"
+fi
+
+echo "PREFIX=${PREFIX}" > Makefile.inc
+echo "USBDROPDIR=${USBDROPDIR}" >> Makefile.inc
+echo "BUILD=${BUILD}" >> Makefile.inc
+echo "CFLAGS=${CFLAGS}" >> Makefile.inc
+echo "LDFLAGS=${LDFLAGS}" >> Makefile.inc
+
+exit 0
